@@ -16,7 +16,8 @@
       .then(() => console.log('Service Worker Registered'));
   }
 </script>
-
+<!-- DOMPurify (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js" integrity="" crossorigin="anonymous"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -257,13 +258,304 @@
               <div class="bar-track"><div class="bar-fill" id="cycleFill"></div></div>
             </div>
 
-            <div class="html-module-slot">// MÓDULO EXTERNO — PRONTO PARA INJEÇÃO HTML</div>
-          </div>
+            <!-- ======= MODULE HOST com DOMPurify + CSS Editor (SUBSTITUIR A SUA html-module-slot) ======= -->
+<div class="html-module-slot" id="moduleHost">
+  <div id="moduleControls" style="display:flex;flex-direction:column;gap:10px;width:100%">
+
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <label style="flex:1">
+        <input id="fileInput" type="file" accept=".html,.htm,.md,.markdown,.css,.txt" style="display:none" />
+        <button class="trigger-btn" id="chooseBtn" type="button">Carregar módulo (HTML / MD / CSS)</button>
+      </label>
+
+      <button class="trigger-btn" id="crystallizeBtn" type="button" title="Salvar módulo no dispositivo">CRISTALIZAR</button>
+      <button class="trigger-btn" id="clearModulesBtn" type="button" title="Remover módulos salvos">LIMPAR</button>
+
+      <label style="font-size:0.78rem;color:rgba(255,255,255,0.6);display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="allowUnsafe" /> Injecção *unsafe* (scripts)
+      </label>
+    </div>
+
+    <div id="dropZone" style="border-radius:10px;padding:10px;border:1px dashed rgba(255,255,255,0.06);font-size:0.78rem;">
+      Arraste arquivos aqui ou clique em "Carregar módulo".
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+      <button class="trigger-btn" id="injectBtn" type="button">INJETAR NO CARD</button>
+      <button class="trigger-btn" id="speakBtn" type="button">LER (TTS)</button>
+      <button class="trigger-btn" id="removePreviewBtn" type="button">REMOVER PREVIEW</button>
+    </div>
+
+    <!-- PREVIEW -->
+    <div id="previewArea" style="margin-top:10px;border-radius:12px;background:rgba(0,0,0,0.18);padding:10px;min-height:84px;">
+      <div id="previewMeta" style="font-size:0.72rem;color:rgba(255,255,255,0.5);margin-bottom:6px;">Preview vazio</div>
+      <div id="previewInner" style="border-radius:8px;overflow:hidden;"></div>
+    </div>
+
+    <!-- CSS Editor -->
+    <details style="margin-top:10px;color:rgba(255,255,255,0.9)">
+      <summary style="cursor:pointer;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)">Editor de CSS (live)</summary>
+      <div style="display:flex;gap:8px;flex-direction:column;padding:8px;">
+        <textarea id="cssEditor" placeholder="Escreva CSS aqui..." style="width:100%;height:120px;background:rgba(0,0,0,0.25);color:#fff;padding:10px;border-radius:8px;font-family:var(--font-code);"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="trigger-btn" id="applyCssBtn">APLICAR CSS</button>
+          <button class="trigger-btn" id="saveCssBtn">SALVAR CSS</button>
+          <button class="trigger-btn" id="resetCssBtn">RESET</button>
+          <label style="font-size:0.78rem;color:rgba(255,255,255,0.6);display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="scopeCss" checked /> Prefixar com <code>.fusion-card</code>
+          </label>
+          <span style="font-size:0.72rem;color:rgba(255,255,255,0.45)">Live update com debounce</span>
         </div>
       </div>
-    </div>
-  </div>
+    </details>
 
+    <div id="savedModulesList" style="margin-top:8px;font-size:0.82rem;color:rgba(255,255,255,0.8);"></div>
+  </div>
+</div>
+
+<script>
+/* ===== Module system com DOMPurify + CSS editor (Live) ===== */
+(function(){
+  // elementos
+  const fileInput = document.getElementById('fileInput');
+  const chooseBtn  = document.getElementById('chooseBtn');
+  const dropZone   = document.getElementById('dropZone');
+  const previewMeta = document.getElementById('previewMeta');
+  const previewInner = document.getElementById('previewInner');
+  const injectBtn  = document.getElementById('injectBtn');
+  const speakBtn   = document.getElementById('speakBtn');
+  const removePreviewBtn = document.getElementById('removePreviewBtn');
+  const allowUnsafeCheckbox = document.getElementById('allowUnsafe');
+  const crystallizeBtn = document.getElementById('crystallizeBtn');
+  const clearModulesBtn = document.getElementById('clearModulesBtn');
+  const savedModulesList = document.getElementById('savedModulesList');
+
+  // css editor
+  const cssEditor = document.getElementById('cssEditor');
+  const applyCssBtn = document.getElementById('applyCssBtn');
+  const saveCssBtn = document.getElementById('saveCssBtn');
+  const resetCssBtn = document.getElementById('resetCssBtn');
+  const scopeCss = document.getElementById('scopeCss');
+
+  const MODULE_KEY = 'dual_fusion_modules_v1';
+  const CSS_KEY = 'dual_fusion_css_v1';
+  const STYLE_ID = 'injected-style-dual';
+
+  // helpers
+  function readFileAsText(file){ return new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=> res(String(r.result));
+    r.onerror = ()=> rej(r.error);
+    r.readAsText(file);
+  });}
+
+  // markdown renderer (same leve)
+  function renderMarkdown(md){
+    md = String(md || '');
+    md = md.replace(/```([a-zA-Z0-9]*)\n([\s\S]*?)```/g, (m, lang, code)=> {
+      return `<pre data-md-code${lang?` data-lang="${lang}"`:''}><code>${escapeHtml(code)}</code></pre>`;
+    });
+    md = md.replace(/`([^`\n]+)`/g, (m, c)=> `<code>${escapeHtml(c)}</code>`);
+    for(let i=6;i>=1;i--){
+      const re = new RegExp('^'+ '#'.repeat(i) + '\\s*(.+)$','gm');
+      md = md.replace(re, `<h${i}>$1</h${i}>`);
+    }
+    md = md.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    md = md.replace(/\*(.+?)\*/g,'<em>$1</em>');
+    md = md.replace(/$begin:math:display$\(\[\^$end:math:display$]+)\]$begin:math:text$\(\[\^\)\]\+\)$end:math:text$/g, (m,t,u)=> `<a href="${escapeAttr(u)}" target="_blank" rel="noopener noreferrer">${t}</a>`);
+    md = md.replace(/^\s*[-\*]\s+(.+)$/gm, '<li>$1</li>');
+    md = md.replace(/(<li>[\s\S]*?<\/li>)/g, (m)=> `<ul>${m}</ul>`);
+    md = md.replace(/^\s*([^<\n].+)\s*$/gm, '<p>$1</p>');
+    return md;
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]) );}
+  function escapeAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+
+  // DOMPurify wrapper: se disponível usa DOMPurify, senão fallback básico
+  function sanitizeHtml(html){
+    if(window.DOMPurify && typeof DOMPurify.sanitize === 'function'){
+      try { return DOMPurify.sanitize(html, {ADD_ATTR: ['target','rel']}); }
+      catch(e){ console.warn('DOMPurify falhou:', e); }
+    }
+    // fallback (bem simples)
+    return html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi,'').replace(/ on\w+=(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,'');
+  }
+
+  // preview state
+  let currentModule = { type:null, name:null, content:null };
+
+  async function handleFile(file){
+    const name = file.name || 'uploaded';
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const txt = await readFileAsText(file);
+    currentModule = { type: ext, name, content: txt };
+    previewMeta.innerText = `${name} [${ext}] — ${Math.round(file.size/1024)}KB`;
+    renderPreview();
+  }
+
+  function renderPreview(){
+    previewInner.innerHTML = '';
+    if(!currentModule.type) { previewMeta.innerText = 'Preview vazio'; return;}
+    if(['md','markdown'].includes(currentModule.type) || currentModule.name.endsWith('.md')){
+      const html = renderMarkdown(currentModule.content);
+      const safeHtml = sanitizeHtml(html);
+      previewInner.innerHTML = safeHtml;
+    } else if(currentModule.type === 'css'){
+      previewInner.innerHTML = `<pre style="white-space:pre-wrap;font-family:var(--font-code);font-size:0.8rem">${escapeHtml(currentModule.content)}</pre>`;
+    } else {
+      // html / txt -> iframe sanitized
+      const sanitized = sanitizeHtml(currentModule.content);
+      const iframe = document.createElement('iframe');
+      iframe.style.width='100%'; iframe.style.height='180px'; iframe.style.border='none'; iframe.style.borderRadius='8px';
+      iframe.setAttribute('sandbox','allow-forms allow-same-origin allow-popups'); // NO scripts by default
+      iframe.srcdoc = sanitized;
+      previewInner.appendChild(iframe);
+    }
+  }
+
+  // injecao ao card
+  function injectModule(){
+    if(!currentModule.type) return alert('Nenhum módulo carregado.');
+    const isUnsafe = allowUnsafeCheckbox.checked;
+    if(currentModule.type === 'css'){
+      applyCss(currentModule.content, scopeCss.checked);
+      speakText('CSS aplicado ao card.');
+      return;
+    }
+    if(['md','markdown'].includes(currentModule.type)){
+      const html = renderMarkdown(currentModule.content);
+      const safeHtml = sanitizeHtml(html);
+      const slot = document.querySelector('.modules-inner');
+      const wrapper = document.createElement('div'); wrapper.className='module-crystallized';
+      wrapper.innerHTML = safeHtml;
+      slot.appendChild(wrapper);
+      speakText('Markdown renderizado e injetado.');
+      return;
+    }
+
+    const sanitized = sanitizeHtml(currentModule.content);
+    if(isUnsafe){
+      if(!confirm('Aviso: Injecção unsafe permite execução de scripts. Confirmar?')) return;
+      const slot = document.querySelector('.modules-inner');
+      const wrapper = document.createElement('div'); wrapper.className='module-crystallized';
+      wrapper.innerHTML = sanitized;
+      slot.appendChild(wrapper);
+      speakText('HTML injetado (unsafe).');
+      return;
+    } else {
+      const iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '240px';
+      iframe.style.border = 'none';
+      iframe.style.borderRadius = '12px';
+      iframe.setAttribute('sandbox','allow-forms allow-same-origin allow-popups'); // sem scripts
+      iframe.srcdoc = sanitized;
+      document.querySelector('.modules-inner').appendChild(iframe);
+      speakText('HTML injetado em sandbox seguro.');
+      return;
+    }
+  }
+
+  // TTS
+  function speakText(customText){
+    if(!window.speechSynthesis) return alert('TTS não suportado.');
+    window.speechSynthesis.cancel();
+    const text = customText || previewInner.innerText || previewInner.textContent || '';
+    if(!text.trim()) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'pt-BR'; u.rate = 1.05;
+    window.speechSynthesis.speak(u);
+  }
+
+  // persistence
+  function loadSavedModules(){ try { const raw = localStorage.getItem(MODULE_KEY); return raw?JSON.parse(raw):[]; } catch(e){ return []; } }
+  function saveModules(list){ localStorage.setItem(MODULE_KEY, JSON.stringify(list)); renderSavedList(); }
+  function renderSavedList(){
+    const list = loadSavedModules();
+    if(!list.length){ savedModulesList.innerHTML = '<em style="color:rgba(255,255,255,0.45)">Nenhum módulo cristalizado</em>'; return; }
+    savedModulesList.innerHTML = '';
+    list.forEach((m,i)=>{
+      const btn = document.createElement('div'); btn.style.display='flex'; btn.style.gap='8px'; btn.style.alignItems='center'; btn.style.marginBottom='6px';
+      btn.innerHTML = `<div style="flex:1">${escapeHtml(m.name)} <small style="color:rgba(255,255,255,0.45);font-size:0.72rem">[${m.type}]</small></div>`;
+      const inject = document.createElement('button'); inject.className='trigger-btn'; inject.textContent='INJETAR';
+      const remove = document.createElement('button'); remove.className='trigger-btn'; remove.textContent='REMOVER';
+      inject.onclick = ()=> { currentModule = m; renderPreview(); injectModule(); };
+      remove.onclick = ()=> { if(!confirm('Remover módulo salvo?')) return; const arr = loadSavedModules(); arr.splice(i,1); saveModules(arr); };
+      btn.appendChild(inject); btn.appendChild(remove);
+      savedModulesList.appendChild(btn);
+    });
+  }
+
+  function crystallizeCurrent(){
+    if(!currentModule.type) return alert('Nenhum módulo carregado.');
+    const arr = loadSavedModules();
+    arr.push({type: currentModule.type, name: currentModule.name, content: currentModule.content});
+    saveModules(arr);
+    speakText('Módulo cristalizado.');
+  }
+  function clearSaved(){ if(!confirm('Remover todos módulos cristalizados?')) return; localStorage.removeItem(MODULE_KEY); renderSavedList(); speakText('Módulos removidos.'); }
+
+  function removePreview(){ currentModule = {type:null,name:null,content:null}; previewInner.innerHTML=''; previewMeta.innerText='Preview vazio'; }
+
+  /* ========== CSS editor functions ========== */
+  function applyCss(cssText, scoped=true){
+    let css = String(cssText || '');
+    if(scoped){
+      // prefix each selector line simply (nao perfeito, mas prático): add `.fusion-card ` in front of top-level selectors
+      css = css.split('}').map(block=>{
+        if(!block.trim()) return '';
+        const parts = block.split('{');
+        if(parts.length<2) return block+'}';
+        let selectors = parts[0].trim();
+        const body = parts.slice(1).join('{');
+        // prefix selectors (ignora @ rules)
+        if(selectors.startsWith('@')) return selectors + '{' + body + '}';
+        selectors = selectors.split(',').map(s=>`.fusion-card ${s.trim()}`).join(', ');
+        return selectors + '{' + body + '}';
+      }).join(' ');
+    }
+    let style = document.getElementById(STYLE_ID);
+    if(!style){ style = document.createElement('style'); style.id = STYLE_ID; style.setAttribute('data-dual','true'); document.querySelector('.fusion-card').appendChild(style); }
+    style.textContent = css;
+  }
+
+  // load/save css to localStorage
+  function loadCss(){ try { return localStorage.getItem(CSS_KEY) || ''; } catch(e){ return ''; } }
+  function saveCss(text){ localStorage.setItem(CSS_KEY, text || ''); }
+
+  // events & bindings
+  chooseBtn.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', async (e)=>{ if(e.target.files && e.target.files[0]) { await handleFile(e.target.files[0]); fileInput.value=''; } });
+
+  ['dragenter','dragover'].forEach(ev=> dropZone.addEventListener(ev,(e)=>{ e.preventDefault(); dropZone.style.borderColor='rgba(255,255,255,0.2)'; }) );
+  ['dragleave','drop'].forEach(ev=> dropZone.addEventListener(ev,(e)=>{ e.preventDefault(); dropZone.style.borderColor='rgba(255,255,255,0.06)'; }) );
+  dropZone.addEventListener('drop', async (e)=>{ const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) await handleFile(f); });
+
+  injectBtn.addEventListener('click', injectModule);
+  speakBtn.addEventListener('click', ()=> speakText());
+  removePreviewBtn.addEventListener('click', removePreview);
+  crystallizeBtn.addEventListener('click', crystallizeCurrent);
+  clearModulesBtn.addEventListener('click', clearSaved);
+
+  // css editor events (live update com debounce)
+  let cssTimer = null;
+  cssEditor.addEventListener('input', ()=> {
+    clearTimeout(cssTimer);
+    cssTimer = setTimeout(()=> applyCss(cssEditor.value, scopeCss.checked), 350);
+  });
+  applyCssBtn.addEventListener('click', ()=> applyCss(cssEditor.value, scopeCss.checked));
+  saveCssBtn.addEventListener('click', ()=> { saveCss(cssEditor.value); speakText('CSS salvo.'); });
+  resetCssBtn.addEventListener('click', ()=> { cssEditor.value = ''; applyCss('', scopeCss.checked); saveCss(''); });
+
+  // load saved on boot
+  document.addEventListener('DOMContentLoaded', ()=>{
+    renderSavedList();
+    const savedCss = loadCss();
+    if(savedCss){ cssEditor.value = savedCss; applyCss(savedCss, scopeCss.checked); }
+  });
+
+})();
+</script>
   <script>
     lucide.createIcons();
 
