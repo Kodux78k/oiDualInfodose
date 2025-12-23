@@ -1,0 +1,26 @@
+<!-- PWA / Icons / SW -->
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="theme-color" content="#05070a">
+
+<!-- Progressive Service Worker registration (place before closing body) -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('./sw.js').then(function(reg){
+        console.log('SW registered:', reg.scope);
+        // optional: listen for updates
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // new content available; you might prompt the user to refresh
+              console.log('New content available; please refresh.');
+            }
+          });
+        });
+      }).catch(console.error);
+    });
+  }
+</script>

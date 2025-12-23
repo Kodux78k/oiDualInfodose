@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="DUAL avatar">
+  <defs>
+    <linearGradient id="gA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2ff"/>
+      <stop offset="100%" stop-color="#bd00ff"/>
+    </linearGradient>
+    <filter id="fA" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="100%" height="100%" rx="18" fill="#071018"/>
+  <circle cx="50" cy="50" r="48" fill="#080b12" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+  <path d="M50 15 A35 35 0 0 1 85 50" stroke="url(#gA)" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M50 85 A35 35 0 0 1 15 50" stroke="#ffffff" stroke-width="2" opacity="0.45" fill="none" stroke-linecap="round"/>
+  <circle cx="50" cy="50" r="20" fill="url(#gA)" filter="url(#fA)" opacity="0.95"/>
+</svg>

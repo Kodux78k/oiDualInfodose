@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>DUAL // FUSION OS — Morph & Stagger (small-preview clickable)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#05070a">
+
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#2563eb">
+<link rel="apple-touch-icon" href="./icon-192.png">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(() => console.log('Service Worker Registered'));
+  }
+</script>
+
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;400;600;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root{
+      --bg-deep:#030406; --glass-surface:rgba(18,18,22,0.65); --glass-border:rgba(255,255,255,0.06);
+      --neon-cyan:#00f2ff; --neon-purple:#bd00ff; --neon-orange:#ff9a3c;
+      --font-ui:'Montserrat',sans-serif; --font-code:'JetBrains Mono',monospace;
+      --ease-overshoot: cubic-bezier(0.34, 1.3, 0.64, 1); /* Efeito elástico */
+      --ease-smooth: cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;outline:none;user-select:none}
+    body{
+      margin:0;padding:0;min-height:100vh;background-color:var(--bg-deep);color:#fff;
+      font-family:var(--font-ui);display:flex;align-items:center;justify-content:center;overflow:hidden;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size:50px 50px;
+    }
+
+    /* ambient */
+    .ambient-light{position:fixed;inset:0;z-index:0;pointer-events:none}
+    .blob{position:absolute;border-radius:50%;filter:blur(100px);opacity:0.15;animation:float 25s infinite alternate ease-in-out}
+    .blob-1{width:60vw;height:60vw;background:var(--neon-cyan);top:-20%;left:-20%}
+    .blob-2{width:50vw;height:50vw;background:var(--neon-purple);bottom:-20%;right:-20%;animation-delay:-5s}
+    @keyframes float{0%{transform:translate(0,0)}100%{transform:translate(40px,60px)}}
+
+    .container{width:100%;max-width:640px;padding:20px;z-index:10;perspective:1200px;display:flex;align-items:center;justify-content:center}
+
+    /* FUSION CARD */
+    .fusion-card{
+      width:100%; max-width:440px;
+      background:var(--glass-surface);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);
+      border:1px solid var(--glass-border);border-radius:36px;padding:30px 25px;box-shadow:0 40px 100px rgba(0,0,0,0.8);
+      position:relative;overflow:hidden;
+      opacity:0; transform:translateY(50px) scale(0.96);
+      display:flex;flex-direction:column;gap:8px;
+      will-change: width, padding, border-radius, box-shadow, transform;
+    }
+    .fusion-card.active{opacity:1;transform:translateY(0) scale(1); transition: opacity 0.6s, transform 0.6s var(--ease-smooth);}
+
+    /* ESTADO FECHADO */
+    .fusion-card.closed{
+      width:260px; max-width:none;
+      padding:14px 16px; border-radius:22px;
+      box-shadow:0 22px 70px rgba(0,0,0,0.75);
+      cursor:pointer;
+    }
+    
+    /* Adaptações Visuais Fechado */
+    .fusion-card.closed .card-header{gap:10px;margin-bottom:0}
+    .fusion-card.closed .brand-dual{font-size:1.3rem; margin-top:0; letter-spacing:-1px}
+    .fusion-card.closed .greeting-row{font-size:1rem}
+    .fusion-card.closed .txt-thin{display:none}
+    .fusion-card.closed .card-body{display:none} /* Sai do fluxo */
+    .fusion-card.closed .avatar-slot{width:52px;height:52px}
+
+    /* Previne transições CSS durante animação JS */
+    .fusion-card.animating{transition: none !important;}
+
+    .fusion-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent)}
+
+    /* HEADER */
+    .card-header{display:flex;align-items:center;gap:15px;margin-bottom:18px;transition: margin 0.3s}
+    .avatar-slot{width:64px;height:64px;flex-shrink:0;border-radius:12px;overflow:hidden;opacity:0;transition:opacity 0.35s}
+    .avatar-slot.shown{opacity:1}
+    
+    .text-block{flex:1;display:flex;flex-direction:column;justify-content:center}
+    .greeting-row{font-size:1.5rem;line-height:1;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+    .txt-thin{font-weight:200;color:rgba(255,255,255,0.7)}
+    .txt-heavy{font-weight:600;color:#fff}
+
+    .brand-dual{
+      font-size:2.2rem;font-weight:900;line-height:0.95;text-transform:uppercase;letter-spacing:-2px;margin-top:4px;
+      background:linear-gradient(-45deg,#fff,var(--neon-cyan),var(--neon-purple),#fff);
+      background-size:300%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:gradientFlow 4s ease infinite;
+    }
+    @keyframes gradientFlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+
+    .clock-widget{text-align:right}
+    .time-display{font-family:var(--font-code);font-size:1rem;color:rgba(255,255,255,0.5);font-weight:700}
+    .status-led{font-size:0.6rem;color:var(--neon-cyan);text-transform:uppercase;letter-spacing:1px;margin-top:4px;display:block}
+
+    /* --- STAGGER / CASCATA --- */
+    .card-body{display:flex;flex-direction:column;gap:12px}
+    
+    /* Elementos que vão entrar em cascata */
+    .stagger-item {
+      opacity: 0;
+      transform: translateY(15px);
+      transition: opacity 0.4s ease, transform 0.4s var(--ease-overshoot);
+    }
+    
+    /* Estado visível (ativado via JS) */
+    .content-visible .stagger-item {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+    /* Delays para cada filho */
+    .content-visible .stagger-item:nth-child(1) { transition-delay: 0.1s; } /* Input */
+    .content-visible .stagger-item:nth-child(2) { transition-delay: 0.18s; } /* Botão */
+    .content-visible .stagger-item:nth-child(3) { transition-delay: 0.25s; } /* Accordion */
+
+
+    .input-wrapper{position:relative}
+    .cyber-input{width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px 50px 16px 18px;color:#fff;font-family:var(--font-code);font-size:0.9rem;transition:0.2s}
+    .cyber-input:focus{border-color:var(--neon-cyan);box-shadow:0 0 15px rgba(0,242,255,0.08);background:rgba(0,0,0,0.5)}
+    .input-icon{position:absolute;right:18px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,0.3)}
+
+    .trigger-btn{width:100%;padding:12px;border:1px dashed rgba(255,255,255,0.1);border-radius:12px;background:rgba(255,255,255,0.02);color:rgba(255,255,255,0.5);font-size:0.75rem;letter-spacing:2px;text-transform:uppercase;cursor:pointer;display:flex;justify-content:center;align-items:center;gap:8px}
+    .trigger-btn:hover{background:rgba(255,255,255,0.04);color:#fff;border-color:rgba(255,255,255,0.3)}
+
+    .hidden-modules{display:grid;grid-template-rows:0fr;opacity:0.6;transition:all 420ms var(--ease-smooth)}
+    .fusion-card.open .hidden-modules{grid-template-rows:1fr;opacity:1;margin-top:10px}
+    .modules-inner{overflow:hidden;display:flex;flex-direction:column;gap:12px; padding-top:2px;}
+
+    .stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+    .stat-box{background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;text-align:center;border:1px solid transparent;transition:0.2s}
+    .stat-box:hover{border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.06)}
+    .stat-lbl{font-size:0.55rem;text-transform:uppercase;color:rgba(255,255,255,0.4);display:block;margin-bottom:4px}
+    .stat-val{font-family:var(--font-code);font-size:0.9rem;font-weight:700;color:var(--neon-cyan)}
+
+    .progress-container{background:rgba(0,0,0,0.2);padding:12px;border-radius:12px}
+    .bar-track{height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;margin:8px 0}
+    .bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--neon-cyan),var(--neon-purple));box-shadow:0 0 10px var(--neon-cyan);transition:width 1.2s ease-out}
+    .bar-meta{display:flex;justify-content:space-between;font-size:0.6rem;color:rgba(255,255,255,0.4);font-family:var(--font-code)}
+
+    .html-module-slot{border:1px solid var(--neon-orange);background:rgba(255,154,60,0.05);border-radius:12px;padding:12px;min-height:56px;display:flex;align-items:center;justify-content:center;color:var(--neon-orange);font-size:0.7rem;font-family:var(--font-code);text-align:center}
+
+    /* small-preview (visible only when closed) */
+    .small-preview{
+      display:none;
+      align-items:center;
+      gap:10px;
+      margin-top:8px;
+      padding:8px 10px;
+      border-radius:10px;
+      background:rgba(255,255,255,0.02);
+      border:1px solid rgba(255,255,255,0.03);
+      font-family:var(--font-code);
+      font-size:0.86rem;
+      color:rgba(255,255,255,0.9);
+      cursor:pointer;
+      overflow:hidden;
+    }
+    .small-preview .mini-avatar{width:30px;height:30px;border-radius:6px;flex-shrink:0;overflow:hidden;display:inline-flex;align-items:center;justify-content:center}
+    .small-preview .small-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 110px)}
+    .small-preview .ident-badge{margin-left:auto;font-weight:700;font-size:0.78rem;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.9);border:1px solid rgba(255,255,255,0.02)}
+
+    .fusion-card.closed .small-preview{display:flex}
+
+    /* vibe-gold pulse for 3/6/9 */
+    .vibe-gold{
+      box-shadow: 0 0 0px rgba(255,210,80,0.0);
+      animation: vibePulse 1.6s infinite;
+      border: 1px solid rgba(255,210,80,0.15);
+    }
+    @keyframes vibePulse {
+      0%{ box-shadow: 0 0 0 0 rgba(255,210,80,0.0); transform: translateY(0); }
+      40%{ box-shadow: 0 0 18px 6px rgba(255,210,80,0.06); transform: translateY(-1px) scale(1.01); }
+      100%{ box-shadow: 0 0 0 0 rgba(255,210,80,0.0); transform: translateY(0); }
+    }
+
+    @media (max-width:420px){ .fusion-card.closed{width:220px} .brand-dual{font-size:1rem} }
+  </style>
+</head>
+<body>
+  <div class="ambient-light">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+  </div>
+
+  <div class="container">
+    <div class="fusion-card closed" id="mainCard" aria-expanded="false">
+      <div class="card-header" id="cardHeader" role="button" tabindex="0" aria-controls="cardBody" aria-expanded="false">
+        <div class="avatar-slot" id="avatarTarget" aria-hidden="true"></div>
+
+        <div class="text-block">
+          <div class="greeting-row">
+            <span class="txt-thin" id="lblHello">Sistema</span>
+            <span class="txt-heavy" id="lblName">Convidado</span>
+          </div>
+          <div class="brand-dual">DUAL</div>
+        </div>
+
+        <div class="clock-widget" aria-hidden="true">
+          <div class="time-display" id="clockTime">00:00</div>
+          <span class="status-led">ONLINE</span>
+        </div>
+      </div>
+
+      <!-- SMALL PREVIEW (clicável) -->
+      <div class="small-preview" id="smallPreview" title="Clique para abrir e editar a ativação">
+        <div class="mini-avatar" id="smallMiniAvatar" aria-hidden="true"></div>
+        <div class="small-text" id="smallText">Ativação aparecerá aqui</div>
+        <div class="ident-badge" id="smallIdent">--</div>
+      </div>
+
+      <div class="card-body" id="cardBody">
+        
+        <div class="input-wrapper stagger-item">
+          <input type="text" class="cyber-input" id="inputUser" placeholder="Identifique-se..." autocomplete="off" />
+          <i data-lucide="fingerprint" class="input-icon"></i>
+        </div>
+
+        <div class="trigger-btn stagger-item" onclick="toggleDetails()">
+          <span id="triggerText">ABRIR MÓDULOS</span>
+          <i data-lucide="chevron-down" id="triggerIcon"></i>
+        </div>
+
+        <div class="hidden-modules stagger-item" id="modulesArea">
+          <div class="modules-inner">
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="stat-lbl">LATÊNCIA</span>
+                <span class="stat-val">12ms</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-lbl">CPU</span>
+                <span class="stat-val">FUSION</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-lbl">RITMO</span>
+                <span class="stat-val">BETA</span>
+              </div>
+            </div>
+
+            <div class="progress-container">
+              <div class="bar-meta">
+                <span>CICLO DIÁRIO</span>
+                <span id="cyclePercent">0%</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill" id="cycleFill"></div></div>
+            </div>
+
+            <div class="html-module-slot">// MÓDULO EXTERNO — PRONTO PARA INJEÇÃO HTML</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    const els = {
+      card: document.getElementById('mainCard'),
+      header: document.getElementById('cardHeader'),
+      avatarTgt: document.getElementById('avatarTarget'),
+      input: document.getElementById('inputUser'),
+      lblHello: document.getElementById('lblHello'),
+      lblName: document.getElementById('lblName'),
+      clock: document.getElementById('clockTime'),
+      triggerText: document.getElementById('triggerText'),
+      triggerIcon: document.getElementById('triggerIcon'),
+      modulesArea: document.getElementById('modulesArea'),
+      cardBody: document.getElementById('cardBody'),
+      smallPreview: document.getElementById('smallPreview'),
+      smallMiniAvatar: document.getElementById('smallMiniAvatar'),
+      smallText: document.getElementById('smallText'),
+      smallIdent: document.getElementById('smallIdent')
+    };
+
+    // Avatar SVG (full)
+    function createAvatarSVG(id, size = 64){
+      return `
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" aria-hidden="true">
+          <defs>
+            <linearGradient id="g${id}" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#00f2ff;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#bd00ff;stop-opacity:1" />
+            </linearGradient>
+            <filter id="f${id}"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <circle cx="50" cy="50" r="48" fill="#080b12" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+          <path d="M50 15 A35 35 0 0 1 85 50" stroke="url(#g${id})" stroke-width="4" fill="none" stroke-linecap="round">
+            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="4s" repeatCount="indefinite"/>
+          </path>
+          <path d="M50 85 A35 35 0 0 1 15 50" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5">
+             <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="-360 50 50" dur="8s" repeatCount="indefinite"/>
+          </path>
+          <circle cx="50" cy="50" r="20" fill="url(#g${id})" filter="url(#f${id})" opacity="0.9"/>
+        </svg>
+      `;
+    }
+    els.avatarTgt.innerHTML = createAvatarSVG('B', 64);
+
+    // small mini avatar generator (SVG) using gradient from seed
+    function hashString(str){
+      let h = 2166136261 >>> 0;
+      for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+      return h >>> 0;
+    }
+    function seedToGradient(seed, id='s'){
+      const h1 = seed % 360;
+      const h2 = (seed * 37) % 360;
+      return {id: `gSmall${id}`, svg: `<linearGradient id="gSmall${id}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="hsl(${h1} 100% 55%)"/><stop offset="100%" stop-color="hsl(${h2} 90% 45%)"/></linearGradient>`};
+    }
+    function makeMiniAvatarHTML(name, size = 30){
+      const seed = hashString(name || 'DUAL');
+      const grad = seedToGradient(seed, seed.toString(36));
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>${grad.svg}</defs>
+          <rect x="0" y="0" width="32" height="32" rx="6" fill="#071018" />
+          <circle cx="16" cy="12" r="6" fill="url(#${grad.id})"/>
+          <path d="M16 24 a8 4 0 0 1 8 -4" stroke="rgba(255,255,255,0.06)" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      `;
+    }
+
+    // small-preview update logic
+    function reduce369Short(name){
+      // sum char codes and reduce to 1..9 then map to 3/6/9 if remainder groups
+      if(!name || !name.trim()) return '--';
+      const s = name.split('').reduce((acc,ch)=> acc + ch.charCodeAt(0), 0);
+      // digital root to 1..9
+      let root = s;
+      while(root > 9) root = String(root).split('').reduce((a,b)=>a+Number(b), 0);
+      // map root to 3/6/9 vibe if it's 3/6/9
+      return root;
+    }
+    function updateSmallPreviewFromName(name){
+      const now = new Date();
+      // simplified phrase selection (by hour)
+      const PHRASES_24 = [
+        "Ativar foco estável.","Sintonizar ritmo criativo.","Amplificar percepção sutil.","Conectar ao core de coesão.",
+        "Iniciar limpeza cognitiva.","Engatar modo produtividade.","Equilibrar fluxo emocional.","Elevar nível de curiosidade.",
+        "Refinar intenção principal.","Fortalecer memória ativa.","Sincronizar com ciclo terrestre.","Ativar shield de atenção.",
+        "Optimizar caminhos de decisão.","Despertar intuição prática.","Atenuar ruídos internos.","Mapear prioridades do dia.",
+        "Habilitar modo aprendizado.","Sintonizar voz interior clara.","Aumentar resiliência mental.","Abrir canal de insights.",
+        "Energetizar campo criativo.","Ancorar objetivos curtos.","Preparar para execução suave.","Concluir com gratidão."
+      ];
+      const phrase = PHRASES_24[now.getHours() % 24];
+      const miniText = (name && name.trim()) ? `${name.trim()} · ${phrase}` : `Ativação aparecerá aqui`;
+      els.smallText.innerText = miniText;
+      // ident short
+      const root = reduce369Short(name);
+      els.smallIdent.innerText = (name && name.trim()) ? `v:${root}` : '--';
+      // vibe gold if 3 or 6 or 9
+      els.smallPreview.classList.remove('vibe-gold');
+      if(root === 3 || root === 6 || root === 9) {
+        els.smallPreview.classList.add('vibe-gold');
+      }
+
+      // mini avatar
+      els.smallMiniAvatar.innerHTML = makeMiniAvatarHTML(name || 'DUAL', 30);
+    }
+
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(()=> {
+        els.card.classList.add('active');
+        els.avatarTgt.classList.add('shown');
+        speak('');
+        const saved = localStorage.getItem('fusion_user');
+        if(saved){ setUserName(saved); speak(`Bem-vindo de volta, ${saved}.`); updateSmallPreviewFromName(saved); }
+        else { speak('Sistema Dual pronto.'); updateSmallPreviewFromName(''); }
+      },120);
+    });
+
+    // Config Morph
+    const morph = {
+      closed: {
+        width: '260px', padding: '14px 16px', borderRadius: '22px',
+        boxShadow: '0 22px 70px rgba(0,0,0,0.75)', scale: 0.995
+      },
+      open: {
+        width: '440px', padding: '30px 25px', borderRadius: '36px',
+        boxShadow: '0 40px 100px rgba(0,0,0,0.8)', scale: 1
+      }
+    };
+
+    // Toggle Card com Overshoot + Stagger
+    function toggleCard() {
+      if(els.card.classList.contains('animating')) return;
+
+      const isOpening = els.card.classList.contains('closed');
+      els.card.classList.add('animating');
+
+      const start = isOpening ? morph.closed : morph.open;
+      const end = isOpening ? morph.open : morph.closed;
+
+      if(isOpening) {
+        els.card.classList.remove('closed');
+        els.card.setAttribute('aria-expanded', 'true');
+      } else {
+        els.card.classList.remove('content-visible');
+        if(els.card.classList.contains('open')) toggleDetails();
+      }
+
+      els.card.style.width = start.width;
+      els.card.style.padding = start.padding;
+      els.card.style.borderRadius = start.borderRadius;
+      els.card.style.boxShadow = start.boxShadow;
+      els.card.style.transform = `scale(${start.scale})`;
+
+      const easing = isOpening ? 'cubic-bezier(0.34, 1.3, 0.64, 1)' : 'cubic-bezier(0.23, 1, 0.32, 1)';
+      const duration = isOpening ? 600 : 450;
+
+      const anim = els.card.animate([
+        {
+          width: start.width, padding: start.padding,
+          borderRadius: start.borderRadius, boxShadow: start.boxShadow,
+          transform: `scale(${start.scale})`
+        },
+        {
+          width: end.width, padding: end.padding,
+          borderRadius: end.borderRadius, boxShadow: end.boxShadow,
+          transform: `scale(${end.scale})`
+        }
+      ], { duration, easing, fill: 'forwards' });
+
+      anim.onfinish = () => {
+        els.card.classList.remove('animating');
+        els.card.style = '';
+
+        if(isOpening) {
+          els.card.classList.add('content-visible');
+          els.input.focus();
+        } else {
+          els.card.classList.add('closed');
+          els.card.setAttribute('aria-expanded', 'false');
+        }
+      };
+    }
+
+    // Eventos
+    els.header.addEventListener('click', toggleCard);
+    els.header.addEventListener('keydown', (e)=> { if(e.key === 'Enter'||e.key===' ') {e.preventDefault(); toggleCard();} });
+
+    // small-preview click -> abre card + foca input
+    els.smallPreview.addEventListener('click', (e) => {
+      // se fechado, abre; se aberto, foca input
+      if(els.card.classList.contains('closed')) {
+        toggleCard();
+        // foco já será dado após animation, mas garantir um foco também
+        setTimeout(()=> els.input.focus(), 500);
+      } else {
+        els.input.focus();
+      }
+    });
+
+    // Input
+    els.input.addEventListener('input', (e)=>{
+      const v = e.target.value;
+      if(v){ els.lblHello.innerText = 'Oi,'; els.lblName.innerText = v; }
+      else { els.lblHello.innerText = 'Sistema'; els.lblName.innerText = 'Convidado'; }
+      updateSmallPreviewFromName(v);
+    });
+    els.input.addEventListener('blur', (e)=>{
+      const v = e.target.value.trim();
+      if(v){ localStorage.setItem('fusion_user', v); speak(`Usuário ${v} confirmado.`); updateSmallPreviewFromName(v); }
+    });
+    els.input.addEventListener('keydown', (e)=> { if(e.key === 'Enter') e.target.blur(); });
+
+    function setUserName(name){
+      els.input.value = name; els.lblHello.innerText = 'Oi,'; els.lblName.innerText = name;
+      updateSmallPreviewFromName(name);
+    }
+
+    // Accordion
+    function toggleDetails(){
+      els.card.classList.toggle('open');
+      const isOpen = els.card.classList.contains('open');
+      els.triggerText.innerText = isOpen ? 'FECHAR MÓDULOS' : 'ABRIR MÓDULOS';
+      els.triggerIcon.setAttribute('data-lucide', isOpen ? 'chevron-up' : 'chevron-down');
+      if(isOpen) speak('Carregando módulos.');
+      lucide.createIcons();
+    }
+
+    // Clock
+    function updateMetrics(){
+      const now = new Date();
+      els.clock.innerText = now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      const pct = Math.min(100, Math.max(0, ((now.getHours() + now.getMinutes()/60) / 24) * 100));
+      document.getElementById('cycleFill').style.width = `${pct}%`;
+      document.getElementById('cyclePercent').innerText = `${Math.floor(pct)}%`;
+    }
+
+    // TTS
+    function speak(text){
+      if(!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      if(!text) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'pt-BR'; u.rate = 1.05;
+      window.speechSynthesis.speak(u);
+    }
+
+    setInterval(updateMetrics,1000); updateMetrics();
+  </script>
+</body>
+</html>
